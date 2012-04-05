@@ -1,7 +1,7 @@
 <?php
   //see README for instructions
   error_reporting(E_ALL);
-  ini_set("memory_limit","200M"); //datasets we are dealing with can be quite large, need enough space in memory
+  ini_set("memory_limit","1500M"); //datasets we are dealing with can be quite large, need enough space in memory
   set_time_limit(0);
   date_default_timezone_set('America/Chicago');
   
@@ -27,7 +27,7 @@
   $fusionTableId = ConnectionInfo::$fusionTableId;
   
   echo "Socrata -> Fusion Tables import by Derek Eder\n\n";
-  echo "app token: $app_token \n";
+  echo "Downloading from Socrata … \n";
   
   //Fetch data from Socrata
   $response = NULL;
@@ -58,69 +58,90 @@
 	$ftclient = new FTClientLogin($token);
 	
 	//for clearing out table
-	//$ftclient->query("DELETE FROM $fusionTableId");
+	$ftclient->query("DELETE FROM $fusionTableId");
 	
 	//check how many are in Fusion Tables already
 	$ftResponse = $ftclient->query("SELECT Count() FROM $fusionTableId");
 	echo "$ftResponse \n";
 	
 	//this part is very custom to this particular dataset. If you are using this, here's where the bulk of your work would be: data mapping!
-	$ftResponse = $ftclient->query(SQLBuilder::select($fusionTableId, "'DATE RECEIVED'", "", "'DATE RECEIVED' DESC", "1"));
-	$ftResponse = trim(str_replace("DATE RECEIVED", "", $ftResponse)); //totally a hack. there's a better way to do this
+	$ftResponse = $ftclient->query(SQLBuilder::select($fusionTableId, "'Inspection Date'", "", "'Inspection Date' DESC", "1"));
+	$ftResponse = trim(str_replace("Inspection Date", "", $ftResponse)); //totally a hack. there's a better way to do this
 	
 	//big assumption: socrata will return the data ordered by date. this may not always be the case
 	if ($ftResponse != "")
-		$latestInsert = new DateTime(str_replace("DATE RECEIVED", "", $ftResponse));   
+		$latestInsert = new DateTime(str_replace("Inspection Date", "", $ftResponse));   
 	else
 		$latestInsert = new DateTime("1/1/2001"); //if there are no rows, set it to an early date so we import everything
 	  
 	echo "\nLatest FT insert: " . $latestInsert->format('m/d/Y') . "\n";
 
+  /*
+    File format
+        8 Inspection ID
+    		9 DBA Name
+    		10 AKA Name
+    		11 License #
+    		12 Facility Type
+    		13 Risk
+    		14 Address
+    		15 City
+    		16 State
+        17 Zip
+    		18 Inspection Date
+    		19 Inspection Type
+    		20 Results
+    		21 Violations
+    		Geometry [new column]
+    		
+    		Results decode
+    		1 Pass
+    		2 Pass w/ Conditions
+    		3 Fail
+    		4 Out of Business
+    		5 Business not Located
+*/
+
 	$insertCount = 0;
     foreach($response["data"] as $row) {
-    	if ($row[9] != "SERVICE REQUEST #") { //first row in this dataset is a duplicate of the column names
+
+    		$inspectionDate = new DateTime($row[18]);
+    		$fullAddress = $row[14] . " " . $row[15] . " " . $row[16] . " " . $row[17];
+    		$location = $row[24] . "," . $row[25];
     		
-    		//convert received date in to DateTime format
-    		$receivedDate = new DateTime($row[10]);
+    		$risk = $row[13];
+    		if (strpos($risk, "1") > -1) $risk = "1";
+    		else if (strpos($risk, "2") > -1) $risk = "2";
+    		else if (strpos($risk, "3") > -1) $risk = "3";
+    		else $risk = "4";
     		
-    		//creating full address column for geocoding
-    		$fullAddress = $row[18] . " " . $row[19] . " " . $row[20] . " " . $row[21] . " chicago IL " . $row[22];
+    		$results = $row[20];
+    		if ($results == "Pass") $results = "1";
+    		else if ($results == "Pass w/ Conditions") $results = "2";
+    		else if ($results == "Fail") $results = "3";
+    		else if ($results == "Out of Business") $results = "4";
+    		else if ($results == "Business not Located") $results = "5";
+        else $results = 6;
     		
-    		//todo add flag columns and do conversion using SQLBuilder::convertToFlag()
-    		
-    		if ($receivedDate > $latestInsert) {
+    		if ($inspectionDate > $latestInsert) {
 		    	$insertArray = array(
-		    	"SERVICE REQUEST #" => $row[9],
-		    	"DATE RECEIVED" => $receivedDate->format('m/d/Y'),
-		    	"LOT LOCATION" => $row[11],
-		    	"DANGEROUS OR HAZARDOUS?" => $row[12], //this column appears to be empty
-		    	"Dangerous flag" => SQLBuilder::convertToFlag($row[12], "dangerous"),
-		    	"OPEN OR BOARDED?" => $row[13],
-		    	"Open flag" => SQLBuilder::convertToFlag($row[13], "open"),
-		    	"ENTRY POINT" => $row[14],
-		    	"VACANT OR OCCUPIED?" => $row[15],
-		    	"Vacant flag" => SQLBuilder::convertToFlag($row[15], "vacant"),
-		    	"VACANT DUE TO FIRE?" => $row[16],
-		    	"Fire flag" => SQLBuilder::setEmptyToZero($row[16]), //stored as an int in Socrata
-		    	"ANY PEOPLE USING PROPERTY?" => $row[17],
-		    	"In use flag" => SQLBuilder::setEmptyToZero($row[17]), //stored as an int in Socrata
-		    	"ADDRESS STREET NUMBER" => $row[18],
-		    	"ADDRESS STREET DIRECTION" => $row[19],
-		    	"ADDRESS STREET NAME" => $row[20],
-		    	"ADDRESS STREET SUFFIX" => $row[21],
-		    	"ZIP CODE" => $row[22],
-		    	"Full Address" => $fullAddress,
-		    	"X COORDINATE" => $row[23],
-		    	"Y COORDINATE" => $row[24],
-		    	"LATITUDE" => $row[25],
-		    	"LONGITUDE" => $row[26],
-		    	"Location" => "(" . implode(",", $row[27]) . ")"
+		      "Inspection ID" => $row[8],
+    		  "DBA Name" => $row[9],
+    		  "AKA Name" => $row[10],
+    		  "License #" => $row[11],
+    		  "Facility Type" => $row[12],
+    		  "Risk" => $risk,
+    		  "Address" => $fullAddress,
+    		  "Inspection Date" => $row[18],
+    		  "Inspection Type" => $row[19],
+    		  "Results" => $results,
+    		  "Violations" => $row[21],
+    		  "Location" => $location
 		    	);
 		    
 		    	$ftclient->query(SQLBuilder::insert($fusionTableId, $insertArray));
 		    	$insertCount++;
 		    	echo "inserted $insertCount so far\n";
-		    }
     	}
     }
   }
