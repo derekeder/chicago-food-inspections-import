@@ -1,6 +1,8 @@
 <?php
   //see README for instructions
   error_reporting(E_ALL);
+  ini_set("display_startup_errors",1);
+  ini_set("display_errors",1);
   ini_set("memory_limit","1500M"); //datasets we are dealing with can be quite large, need enough space in memory
   set_time_limit(0);
   date_default_timezone_set('America/Chicago');
@@ -58,7 +60,7 @@
 	$ftclient = new FTClientLogin($token);
 	
 	//for clearing out table
-	$ftclient->query("DELETE FROM $fusionTableId");
+	//$ftclient->query("DELETE FROM $fusionTableId");
 	
 	//check how many are in Fusion Tables already
 	$ftResponse = $ftclient->query("SELECT Count() FROM $fusionTableId");
@@ -73,8 +75,12 @@
 		$latestInsert = new DateTime(str_replace("Inspection Date", "", $ftResponse));   
 	else
 		$latestInsert = new DateTime("1/1/2001"); //if there are no rows, set it to an early date so we import everything
-	  
-	echo "\nLatest FT insert: " . $latestInsert->format('m/d/Y') . "\n";
+
+  echo "\nLatest FT insert: " . $latestInsert->format('m/d/Y') . "\n";
+		
+		
+  //$importBefore = new DateTime("10/10/2010");
+  //echo "\nImporting before: " . $importBefore->format('m/d/Y') . "\n";
 
   /*
     File format
@@ -103,49 +109,51 @@
 */
 
 	$insertCount = 0;
+	$fp = fopen('food_inspections.csv', 'w+');
+	
     foreach($response["data"] as $row) {
 
-    		$inspectionDate = new DateTime($row[18]);
-    		$fullAddress = $row[14] . " " . $row[15] . " " . $row[16] . " " . $row[17];
-    		$location = $row[24] . "," . $row[25];
-    		
-    		$risk = $row[13];
-    		if (strpos($risk, "1") > -1) $risk = "1";
-    		else if (strpos($risk, "2") > -1) $risk = "2";
-    		else if (strpos($risk, "3") > -1) $risk = "3";
-    		else $risk = "4";
-    		
-    		$results = $row[20];
-    		if ($results == "Pass") $results = "1";
-    		else if ($results == "Pass w/ Conditions") $results = "2";
-    		else if ($results == "Fail") $results = "3";
-    		else if ($results == "Out of Business") $results = "4";
-    		else if ($results == "Business not Located") $results = "5";
-        else $results = 6;
-    		
-    		if ($inspectionDate > $latestInsert) {
-		    	$insertArray = array(
-		      "Inspection ID" => $row[8],
-    		  "DBA Name" => $row[9],
-    		  "AKA Name" => $row[10],
-    		  "License #" => $row[11],
-    		  "Facility Type" => $row[12],
-    		  "Risk" => $risk,
-    		  "Address" => $fullAddress,
-    		  "Inspection Date" => $row[18],
-    		  "Inspection Type" => $row[19],
-    		  "Results" => $results,
-    		  "Violations" => $row[21],
-    		  "Location" => $location
-		    	);
-		    
-		    	$ftclient->query(SQLBuilder::insert($fusionTableId, $insertArray));
-		    	$insertCount++;
-		    	echo "inserted $insertCount so far\n";
+  		$inspectionDate = new DateTime($row[18]);
+  		$fullAddress = $row[14] . " " . $row[15] . " " . $row[16] . " " . $row[17];
+  		$location = $row[24] . "," . $row[25];
+  		
+  		$results = $row[20];
+  		if ($results == "Pass") $results = "1";
+  		else if ($results == "Pass w/ Conditions") $results = "2";
+  		else if ($results == "Fail") $results = "3";
+  		else if ($results == "Out of Business") $results = "4";
+  		else if ($results == "Business not Located") $results = "5";
+      else $results = 6;
+  		
+  		if ($inspectionDate > $latestInsert) {
+	    	$insertArray = array(
+	      "Inspection ID" => $row[8],
+  		  "DBA Name" => clean_field($row[9]),
+  		  "AKA Name" => clean_field($row[10]),
+  		  "License #" => $row[11],
+  		  "Facility Type" => $row[12],
+  		  "Risk" => $row[13],
+  		  "Address" => $fullAddress,
+  		  "Inspection Date" => $row[18],
+  		  "Inspection Type" => $row[19],
+  		  "Results" => $results,
+  		  "Violations" => clean_field($row[21]),
+  		  "Location" => $location
+	    	);
+	    
+	      //fputcsv($fp, $insertArray);
+	    	echo $ftclient->query(SQLBuilder::insert($fusionTableId, $insertArray));
+	    	$insertCount++;
+	    	echo "inserted $insertCount so far (" . $inspectionDate->format('m/d/Y') . ")\n";
     	}
     }
   }
   echo "\ninserted $insertCount rows\n";
   echo "This script ran in " . (time()-$bgtime) . " seconds\n";
   echo "\nDone.\n";
+
+  
+  function clean_field($val) {
+    return str_replace("'", "", $val);
+  }
 ?>

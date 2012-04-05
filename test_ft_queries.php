@@ -1,13 +1,16 @@
 <?php
 
-include('clientlogin.php');
-include('sql.php');
-include('file.php');
+include('source/clientlogin.php');
+include('source/sql.php');
 include('source/connectioninfo.php');
 
 //get token
 $token = ClientLogin::getAuthToken(ConnectionInfo::$google_username, ConnectionInfo::$google_password);
 $ftclient = new FTClientLogin($token);
+$fusionTableId = ConnectionInfo::$fusionTableId;
+
+//echo $ftResponse = $ftclient->query("SELECT Count() FROM $fusionTableId");
+//echo $ftclient->query("DELETE FROM $fusionTableId");
 
 //show all tables
 //echo $ftclient->query(SQLBuilder::showTables());
