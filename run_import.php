@@ -162,7 +162,12 @@
         }
         $comments = str_replace("Inspector Comments:", "", $comments);
         $comments = str_replace("Comments:", "", $comments);
-        if ($comments != "") $commentsParsed++;
+        if ($comments != "") 
+        {
+          $comments = str_replace("\n", " ", $comments);
+          $comments = "<span class='mute'>$comments</span>";
+          $commentsParsed++;
+        }
   		}
   		//if ($inspectionDate > $latestInsert) {
 	    	$insertArray = array(
