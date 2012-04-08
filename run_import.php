@@ -109,6 +109,10 @@
 */
 
 	$insertCount = 0;
+	$violationsCount = 0;
+	
+	$violationsParsed = 0;
+	$commentsParsed = 0;
 	$fp = fopen('food_inspections.csv', 'w+');
 	
     foreach($response["data"] as $row) {
@@ -124,8 +128,43 @@
   		else if ($results == "Out of Business") $results = "4";
   		else if ($results == "Business not Located") $results = "5";
       else $results = 6;
-  		
-  		if ($inspectionDate > $latestInsert) {
+      
+      $violations = "";
+      $comments = "";
+      if ($row[21] != "")
+      {
+        $violationsCount++;
+        //parse out violations
+        $numViolations = preg_match_all('(\n\d+)', $row[21], $matches, PREG_PATTERN_ORDER);
+  
+        foreach ($matches as $val) {
+          for ($j=0;$j<$numViolations;$j++) {
+            $v = intval(str_replace("\n", "", $val[$j]));
+            
+            //set css class to hilight different violation severities
+            $class = "violation-critical";
+            if ($v >= 30) $class="violation-minor";
+            else if ($v >= 15) $class="violation-serious";
+            $violations .= "<a class='$class' href='violations.html#violation-$v' target='_blank'>$v</a>, ";
+          }
+        }
+        $violations = trim($violations, " ,");
+        if ($violations != "") $violationsParsed++;
+        
+        //do the same for comments
+        $numComments = preg_match_all('/Comments:(.+)\n/', $row[21], $matches, PREG_PATTERN_ORDER);
+  
+        foreach ($matches as $val) {
+          for ($j=0;$j<$numComments;$j++) {
+            $v = str_replace("\n", "", $val[$j]);
+            $comments .= "$v<br />";
+          }
+        }
+        $comments = str_replace("Inspector Comments:", "", $comments);
+        $comments = str_replace("Comments:", "", $comments);
+        if ($comments != "") $commentsParsed++;
+  		}
+  		//if ($inspectionDate > $latestInsert) {
 	    	$insertArray = array(
 	      "Inspection ID" => $row[8],
   		  "DBA Name" => clean_field($row[9]),
@@ -137,18 +176,23 @@
   		  "Inspection Date" => $row[18],
   		  "Inspection Type" => $row[19],
   		  "Results" => $results,
-  		  "Violations" => clean_field($row[21]),
+  		  "Violations" => $violations,
+  		  "Comments" => $comments,
   		  "Location" => $location
 	    	);
 	    
-	      //fputcsv($fp, $insertArray);
-	    	echo $ftclient->query(SQLBuilder::insert($fusionTableId, $insertArray));
+	      fputcsv($fp, $insertArray);
+	    	//echo $ftclient->query(SQLBuilder::insert($fusionTableId, $insertArray));
 	    	$insertCount++;
 	    	echo "inserted $insertCount so far (" . $inspectionDate->format('m/d/Y') . ")\n";
-    	}
+    	//}
     }
   }
   echo "\ninserted $insertCount rows\n";
+  echo "$violationsCount violations present\n";
+  echo "$violationsParsed violations parsed\n";
+  echo "$commentsParsed comments parsed\n";
+  
   echo "This script ran in " . (time()-$bgtime) . " seconds\n";
   echo "\nDone.\n";
 
