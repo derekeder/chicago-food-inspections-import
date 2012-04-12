@@ -55,65 +55,62 @@
     
     //Fetch info from Fusion Tables and do inserts & data manipulation
     echo "\n----Inserting in to Fusion Tables----\n";
+    
     //get token
-	$token = ClientLogin::getAuthToken(ConnectionInfo::$google_username, ConnectionInfo::$google_password);
-	$ftclient = new FTClientLogin($token);
-	
-	//for clearing out table
-	//$ftclient->query("DELETE FROM $fusionTableId");
-	
-	//check how many are in Fusion Tables already
-	$ftResponse = $ftclient->query("SELECT Count() FROM $fusionTableId");
-	echo "$ftResponse \n";
-	
-	//this part is very custom to this particular dataset. If you are using this, here's where the bulk of your work would be: data mapping!
-	$ftResponse = $ftclient->query(SQLBuilder::select($fusionTableId, "'Inspection Date'", "", "'Inspection Date' DESC", "1"));
-	$ftResponse = trim(str_replace("Inspection Date", "", $ftResponse)); //totally a hack. there's a better way to do this
-	
-	//big assumption: socrata will return the data ordered by date. this may not always be the case
-	if ($ftResponse != "")
-		$latestInsert = new DateTime(str_replace("Inspection Date", "", $ftResponse));   
-	else
-		$latestInsert = new DateTime("1/1/2001"); //if there are no rows, set it to an early date so we import everything
-
-  echo "\nLatest FT insert: " . $latestInsert->format('m/d/Y') . "\n";
+  	$token = ClientLogin::getAuthToken(ConnectionInfo::$google_username, ConnectionInfo::$google_password);
+  	$ftclient = new FTClientLogin($token);
+  	
+  	//check how many are in Fusion Tables already
+  	$ftResponse = $ftclient->query("SELECT Count() FROM $fusionTableId");
+  	echo "$ftResponse \n";
+  	
+  	$ftResponse = $ftclient->query(SQLBuilder::select($fusionTableId, "'Inspection Date'", "", "'Inspection Date' DESC", "1"));
+  	$ftResponse = trim(str_replace("Inspection Date", "", $ftResponse)); //totally a hack. there's a better way to do this
+  	
+  	//big assumption: socrata will return the data ordered by date. this may not always be the case
+  	if ($ftResponse != "")
+  		$latestInsert = new DateTime(str_replace("Inspection Date", "", $ftResponse));   
+  	else
+  		$latestInsert = new DateTime("1/1/2001"); //if there are no rows, set it to an early date so we import everything
+  
+    echo "\nLatest FT insert: " . $latestInsert->format('m/d/Y') . "\n";
 		
-		
-  //$importBefore = new DateTime("10/10/2010");
-  //echo "\nImporting before: " . $importBefore->format('m/d/Y') . "\n";
-
-  /*
-    File format
-        8 Inspection ID
-    		9 DBA Name
-    		10 AKA Name
-    		11 License #
-    		12 Facility Type
-    		13 Risk
-    		14 Address
-    		15 City
-    		16 State
-        17 Zip
-    		18 Inspection Date
-    		19 Inspection Type
-    		20 Results
-    		21 Violations
-    		Geometry [new column]
-    		
-    		Results decode
-    		1 Pass
-    		2 Pass w/ Conditions
-    		3 Fail
-    		4 Out of Business
-    		5 Business not Located
-*/
-
-	$insertCount = 0;
-	$violationsCount = 0;
-	
-	$violationsParsed = 0;
-	$commentsParsed = 0;
-	$fp = fopen('food_inspections.csv', 'w+');
+    //$importBefore = new DateTime("10/10/2010");
+    //echo "\nImporting before: " . $importBefore->format('m/d/Y') . "\n";
+  
+    /*
+      File format
+      8 Inspection ID
+  		9 DBA Name
+  		10 AKA Name
+  		11 License #
+  		12 Facility Type
+  		13 Risk
+  		14 Address
+  		15 City
+  		16 State
+      17 Zip
+  		18 Inspection Date
+  		19 Inspection Type
+  		20 Results
+  		21 Violations
+  		Geometry [new column]
+  		
+  		Results decode
+  		1 Pass
+  		2 Pass w/ Conditions
+  		3 Fail
+  		4 Out of Business
+  		5 Business not Located
+    */
+  
+  	$insertCount = 0;
+  	$violationsCount = 0;
+  	
+  	$violationsParsed = 0;
+  	$commentsParsed = 0;
+  	$fp = fopen('food_inspections.csv', 'w+');
+  	$licenseIds = array();
 	
     foreach($response["data"] as $row) {
 
@@ -165,6 +162,7 @@
         if ($comments != "") 
         {
           $comments = str_replace("\n", " ", $comments);
+          $comments = truncateTxt($comments, 500);
           $comments = "<span class='mute'>$comments</span>";
           $commentsParsed++;
         }
@@ -185,11 +183,16 @@
   		  "Comments" => $comments,
   		  "Location" => $location
 	    	);
-	    
-	      fputcsv($fp, $insertArray);
-	    	//echo $ftclient->query(SQLBuilder::insert($fusionTableId, $insertArray));
-	    	$insertCount++;
-	    	echo "inserted $insertCount so far (" . $inspectionDate->format('m/d/Y') . ")\n";
+	    	
+	    	//only insert the most recent inspection
+	      if (!in_array($row[11], $licenseIds)) {
+	         fputcsv($fp, $insertArray);
+	         array_push($licenseIds, $row[11]);
+	         //echo $ftclient->query(SQLBuilder::insert($fusionTableId, $insertArray));
+	    	   $insertCount++;
+	    	   echo "inserted $insertCount so far (" . $inspectionDate->format('m/d/Y') . ")\n";
+	      }
+	    	
     	//}
     }
   }
@@ -204,5 +207,20 @@
   
   function clean_field($val) {
     return str_replace("'", "", $val);
+  }
+  
+  function truncateTxt($string, $limit, $break=".", $pad="...")
+  {
+    // return with no change if string is shorter than $limit
+    if(strlen($string) <= $limit) return $string;
+  
+    // is $break present between $limit and the end of the string?
+    if(false !== ($breakpoint = strpos($string, $break, $limit))) {
+      if($breakpoint < strlen($string) - 1) {
+        $string = substr($string, 0, $breakpoint) . $pad;
+      }
+    }
+  
+    return $string;
   }
 ?>
