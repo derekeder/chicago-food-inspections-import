@@ -47,9 +47,16 @@ foreach ($matches as $val) {
 echo str_replace("Comments:Inspector Comments: ", "", $comments);
 */
 
-echo $ftResponse = $ftclient->query("SELECT Count() FROM $fusionTableId");
-echo $ftclient->query("DELETE FROM $fusionTableId");
+//echo $ftResponse = $ftclient->query("SELECT Count() FROM $fusionTableId");
+//echo $ftclient->query("DELETE FROM $fusionTableId");
 
+date_default_timezone_set('America/Chicago');
+$testDate = new DateTime("4/4/2011");
+$today = new DateTime();
+$daysSinceInspection = $today->getTimestamp() - $testDate->getTimestamp();
+$daysSinceInspection = $daysSinceInspection / (60 * 60 *24);
+
+echo $daysSinceInspection
 //show all tables
 //echo $ftclient->query(SQLBuilder::showTables());
 //echo "<br />";

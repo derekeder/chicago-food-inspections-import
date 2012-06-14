@@ -115,6 +115,11 @@
     foreach($response["data"] as $row) {
 
   		$inspectionDate = new DateTime($row[18]);
+  		
+  		$today = new DateTime();
+  		$daysSinceInspection = $today->getTimestamp() - $inspectionDate->getTimestamp();
+  		$daysSinceInspection = intval($daysSinceInspection / (60 * 60 *24));
+  		
   		$fullAddress = $row[14] . " " . $row[15] . " " . $row[16] . " " . $row[17];
   		$location = $row[24] . "," . $row[25];
   		
@@ -178,6 +183,7 @@
   		  "Address" => $fullAddress,
   		  "Inspection Date" => $row[18],
   		  "Inspection Type" => $row[19],
+  		  "Days Since Inspection" => $daysSinceInspection,
   		  "Results" => $results,
   		  "Violations" => $violations,
   		  "Comments" => $comments,
